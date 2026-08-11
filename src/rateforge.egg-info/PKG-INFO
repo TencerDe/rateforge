@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: rateforge
+Version: 0.1.0
+Summary: Redis-backed sliding window rate limiter for Python applications
+Author: Tanuj Sharma
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: redis>=5.0
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"
+Requires-Dist: pytest-cov>=5.0; extra == "dev"
