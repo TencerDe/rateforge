@@ -4,6 +4,7 @@ import uuid
 from .algorithms import SLIDING_WINDOW_SCRIPT
 from .backend import RedisBackend
 from .models import RateLimitResult
+from .keys import RateLimitKeyBuilder
 
 
 class RateLimiter:
@@ -21,13 +22,13 @@ class RateLimiter:
         )
 
     def check(
-        self,
-        *,
-        identity: str,
-        endpoint: str,
-        limit: int,
-        window: int,
-    ) -> RateLimitResult:
+    self,
+    *,
+    identity: str,
+    endpoint: str,
+    limit: int,
+    window: int,
+) -> RateLimitResult:
 
         if limit <= 0:
             raise ValueError("limit must be greater than 0")
@@ -38,7 +39,10 @@ class RateLimiter:
         now = time.time()
         request_id = uuid.uuid4().hex
 
-        key = f"rateforge:{identity}:{endpoint}"
+        key = RateLimitKeyBuilder.build(
+              identity,
+              endpoint,
+)
 
         try:
             result = self._script(
