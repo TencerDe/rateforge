@@ -12,7 +12,7 @@ authors = [
     {name = "Tanuj Sharma"}
 ]
 dependencies = [
-    "redis>=5.0"
+    "redis>=5.0",
 ]
 
 [project.optional-dependencies]
@@ -33,3 +33,7 @@ source = ["rateforge"]
 
 [tool.coverage.report]
 show_missing = true
+
+fastapi = [
+    "fastapi>=0.100",
+]

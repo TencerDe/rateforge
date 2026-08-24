@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from .duration import parse_rate
 
 
 @dataclass(frozen=True)
@@ -13,3 +14,17 @@ class RateLimitPolicy:
 
         if self.window <= 0:
             raise ValueError("window must be greater than 0")
+
+
+def create_policy(
+    rate: str,
+    *,
+    identity: str = "ip",
+) -> RateLimitPolicy:
+    limit, window = parse_rate(rate)
+
+    return RateLimitPolicy(
+        limit=limit,
+        window=window,
+        identity=identity,
+    )

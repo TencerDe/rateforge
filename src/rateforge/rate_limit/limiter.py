@@ -3,8 +3,10 @@ import uuid
 
 from .algorithms import SLIDING_WINDOW_SCRIPT
 from .backend import RedisBackend
-from .models import RateLimitResult
+from .models import RateLimitResult, IdentityType, RateLimitContext
 from .keys import RateLimitKeyBuilder
+from .identity import IdentityResolver
+from .policy import RateLimitPolicy
 
 
 class RateLimiter:
@@ -79,4 +81,19 @@ class RateLimiter:
             remaining=remaining,
             retry_after=retry_after,
             reset_at=int(now + window),
+        )
+    def check_context(self,
+                      context: RateLimitContext,
+                      policy: RateLimitPolicy
+                      ) -> RateLimitResult:
+        identity_type = IdentityType(policy.identity),
+
+        identity = IdentityResolver.resolve(
+            context, identity_type)
+
+        return self.check(
+            identity=identity,
+            endpoint = context.endpoint,
+            limit = policy.limit,
+            window = policy.window
         )

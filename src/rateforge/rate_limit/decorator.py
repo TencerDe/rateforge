@@ -1,6 +1,5 @@
 from functools import wraps
 
-from .exceptions import RateLimitExceeded
 from .models import RateLimitContext
 from .policy import create_policy
 
@@ -18,19 +17,15 @@ def limit(
 
     def decorator(func):
         @wraps(func)
-        def wrapper(
-            context: RateLimitContext,
-            *args,
-            **kwargs,
-        ):
+        def wrapper(context: RateLimitContext, *args, **kwargs):
             result = limiter.check_context(
                 context,
                 policy,
             )
 
             if not result.allowed:
-                raise RateLimitExceeded(
-                    result=result,
+                raise RuntimeError(
+                    "Rate limit exceeded"
                 )
 
             return func(
