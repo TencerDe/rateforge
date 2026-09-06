@@ -1,7 +1,7 @@
 # Redis Failure Handling
 
 **Feature:** Production-ready Redis failure handling with fail-open/fail-closed modes  
-**Status:** ✅ Implemented  
+**Status:** Implemented  
 **Date:** 2026-09-06  
 **Author:** Tanuj Sharma
 
@@ -26,7 +26,7 @@
 Initial implementation used overly broad exception handling:
 
 ```python
-# ❌ BEFORE - Too broad
+#  BEFORE - Too broad
 try:
     result = self._script(...)
 except Exception:
@@ -140,12 +140,11 @@ RateForgeException (base)
 
 | Exception | When Raised | Suppressed? |
 |-----------|-------------|-------------|
-| `RedisConnectionError` | Redis unreachable, timeout | ✅ (if fail_open=True) |
-| `ScriptExecutionError` | Lua script bug, invalid args | ❌ Never |
-| `ConfigurationError` | Invalid Redis URL, missing config | ❌ Never |
+| `RedisConnectionError` | Redis unreachable, timeout | (if fail_open=True) |
+| `ScriptExecutionError` | Lua script bug, invalid args | Never |
+| `ConfigurationError` | Invalid Redis URL, missing config | Never |
 
 ---
-
 ## Fail-Open vs Fail-Closed
 
 ### Fail-Open Mode
@@ -174,9 +173,9 @@ Add rate limit headers (limit, remaining = limit)
 - Temporary degradation acceptable
 
 **Trade-offs:**
-- ✅ API stays available during Redis outage
-- ❌ Rate limiting temporarily disabled
-- ❌ Risk of API abuse during outage
+-  API stays available during Redis outage
+-  Rate limiting temporarily disabled
+-  Risk of API abuse during outage
 
 ### Fail-Closed Mode
 
@@ -204,9 +203,9 @@ Return 503 Service Unavailable
 - Prefer downtime over abuse
 
 **Trade-offs:**
-- ✅ Strict rate limiting always enforced
-- ❌ API unavailable during Redis outage
-- ❌ May impact user experience
+-  Strict rate limiting always enforced
+-  API unavailable during Redis outage
+-  May impact user experience
 
 ### Decision Framework
 
@@ -228,7 +227,7 @@ Is rate limiting a security requirement?
 
 #### RateLimiter.check() Method
 
-**BEFORE (❌ Broad Exception):**
+**BEFORE ( Broad Exception):**
 
 ```python
 try:
@@ -242,7 +241,7 @@ except Exception:
     raise
 ```
 
-**AFTER (✅ Specific Exceptions):**
+**AFTER ( Specific Exceptions):**
 
 ```python
 try:
@@ -360,12 +359,12 @@ def test_fail_open_allows_request(mock_script):
 
 | Scenario | Fail-Open | Fail-Closed | Script Error |
 |----------|-----------|-------------|--------------|
-| Redis ConnectionError | ✅ Allow | ❌ Raise | N/A |
-| Redis TimeoutError | ✅ Allow | ❌ Raise | N/A |
-| Redis BusyLoadingError | ✅ Allow | ❌ Raise | N/A |
-| Script ValueError | ❌ Raise | ❌ Raise | ✅ Raise |
-| Script RuntimeError | ❌ Raise | ❌ Raise | ✅ Raise |
-| Invalid Config | ❌ Raise | ❌ Raise | ❌ Raise |
+| Redis ConnectionError |  Allow |  Raise | N/A |
+| Redis TimeoutError |  Allow |  Raise | N/A |
+| Redis BusyLoadingError |  Allow |  Raise | N/A |
+| Script ValueError |  Raise |  Raise |  Raise |
+| Script RuntimeError |  Raise |  Raise |  Raise |
+| Invalid Config |  Raise |  Raise |  Raise |
 
 ---
 

@@ -1,3 +1,4 @@
+import os
 import time
 import uuid
 
@@ -14,6 +15,50 @@ from .policy import RateLimitPolicy
 
 
 logger = structlog.get_logger()
+
+_default_limiter: "RateLimiter | None" = None
+
+
+def get_default_limiter() -> "RateLimiter":
+    """
+    Get or create global RateLimiter instance.
+    
+    Configuration via environment variables:
+    - RATEFORGE_REDIS_URL: Redis connection URL (default: redis://localhost:6379/0)
+    - RATEFORGE_FAIL_OPEN: Allow requests when Redis is down (default: true)
+    
+    Returns:
+        Global RateLimiter instance
+    """
+    global _default_limiter
+    
+    if _default_limiter is None:
+        redis_url = os.getenv(
+            "RATEFORGE_REDIS_URL",
+            "redis://localhost:6379/0"
+        )
+        fail_open_str = os.getenv("RATEFORGE_FAIL_OPEN", "true").lower()
+        fail_open = fail_open_str == "true"
+        
+        _default_limiter = RateLimiter(redis_url, fail_open=fail_open)
+    
+    return _default_limiter
+
+
+def configure_limiter(
+    redis_url: str,
+    *,
+    fail_open: bool = True,
+) -> None:
+    """
+    Configure global RateLimiter instance.
+    
+    Args:
+        redis_url: Redis connection URL
+        fail_open: Allow requests when Redis is unavailable
+    """
+    global _default_limiter
+    _default_limiter = RateLimiter(redis_url, fail_open=fail_open)
 
 
 class RateLimiter:

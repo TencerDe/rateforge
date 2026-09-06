@@ -1,4 +1,8 @@
-from .limiter import RateLimiter
+from .limiter import (
+    RateLimiter,
+    get_default_limiter,
+    configure_limiter,
+)
 from .models import (
     IdentityType,
     RateLimitContext,
@@ -13,14 +17,20 @@ from .exceptions import (
     RateLimitExceeded,
     RedisUnavailableError,
 )
+from .decorator import rate_limit
+from .responses import RateLimitResponseHandler
 
 __all__ = [
     "RateLimiter",
+    "get_default_limiter",
+    "configure_limiter",
     "IdentityType",
     "RateLimitContext",
     "RateLimitResult",
     "RateLimitPolicy",
     "create_policy",
+    "rate_limit",
+    "RateLimitResponseHandler",
     "RateLimitError",
     "RateLimitExceeded",
     "RedisUnavailableError",
