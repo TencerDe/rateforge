@@ -6,6 +6,8 @@ Author: Tanuj Sharma
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown
 Requires-Dist: redis>=5.0
+Requires-Dist: structlog>=24.0
 Provides-Extra: dev
 Requires-Dist: pytest>=8.0; extra == "dev"
 Requires-Dist: pytest-cov>=5.0; extra == "dev"
+Requires-Dist: pytest-mock>=3.0; extra == "dev"

@@ -8,6 +8,7 @@ src/rateforge.egg-info/requires.txt
 src/rateforge.egg-info/top_level.txt
 src/rateforge/integrations/__init__.py
 src/rateforge/integrations/django.py
+src/rateforge/integrations/fastapi.py
 src/rateforge/rate_limit/__init__.py
 src/rateforge/rate_limit/algorithms.py
 src/rateforge/rate_limit/backend.py

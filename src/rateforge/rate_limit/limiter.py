@@ -1,15 +1,42 @@
 import time
 import uuid
 
+import structlog
+from redis.exceptions import ConnectionError, TimeoutError, BusyLoadingError
+
 from .algorithms import SLIDING_WINDOW_SCRIPT
 from .backend import RedisBackend
+from .exceptions import RedisConnectionError, ScriptExecutionError
 from .models import RateLimitResult, IdentityType, RateLimitContext
 from .keys import RateLimitKeyBuilder
 from .identity import IdentityResolver
 from .policy import RateLimitPolicy
 
 
+logger = structlog.get_logger()
+
+
 class RateLimiter:
+    """
+    Redis-backed sliding window rate limiter.
+    
+    Args:
+        redis_url: Redis connection URL (e.g., "redis://localhost:6379/0")
+        fail_open: If True, allow requests when Redis is unavailable.
+                  If False, reject requests when Redis is unavailable.
+    
+    Example:
+        >>> limiter = RateLimiter("redis://localhost:6379/0", fail_open=True)
+        >>> result = limiter.check(
+        ...     identity="user:123",
+        ...     endpoint="/api/orders",
+        ...     limit=100,
+        ...     window=60,
+        ... )
+        >>> if not result.allowed:
+        ...     print(f"Retry after {result.retry_after} seconds")
+    """
+    
     def __init__(
         self,
         redis_url: str,
@@ -24,14 +51,30 @@ class RateLimiter:
         )
 
     def check(
-    self,
-    *,
-    identity: str,
-    endpoint: str,
-    limit: int,
-    window: int,
-) -> RateLimitResult:
-
+        self,
+        *,
+        identity: str,
+        endpoint: str,
+        limit: int,
+        window: int,
+    ) -> RateLimitResult:
+        """
+        Check if a request should be allowed based on rate limits.
+        
+        Args:
+            identity: Unique identifier (e.g., "user:123", "ip:192.168.1.1")
+            endpoint: API endpoint path (e.g., "/api/orders")
+            limit: Maximum number of requests allowed in the window
+            window: Time window in seconds
+        
+        Returns:
+            RateLimitResult with allowed status and metadata
+        
+        Raises:
+            RedisConnectionError: If Redis is unavailable and fail_open=False
+            ScriptExecutionError: If Lua script execution fails
+            ValueError: If limit or window are invalid
+        """
         if limit <= 0:
             raise ValueError("limit must be greater than 0")
 
@@ -41,23 +84,20 @@ class RateLimiter:
         now = time.time()
         request_id = uuid.uuid4().hex
 
-        key = RateLimitKeyBuilder.build(
-              identity,
-              endpoint,
-)
+        key = RateLimitKeyBuilder.build(identity, endpoint)
 
         try:
             result = self._script(
                 keys=[key],
-                args=[
-                    now,
-                    window,
-                    limit,
-                    request_id,
-                ],
+                args=[now, window, limit, request_id],
             )
-
-        except Exception:
+        except (ConnectionError, TimeoutError, BusyLoadingError) as exc:
+            logger.warning(
+                "redis_connection_failed",
+                identity=identity,
+                endpoint=endpoint,
+                fail_open=self.fail_open,
+            )
             if self.fail_open:
                 return RateLimitResult(
                     allowed=True,
@@ -66,8 +106,31 @@ class RateLimiter:
                     retry_after=0,
                     reset_at=int(now + window),
                 )
-
+            raise RedisConnectionError(f"Redis connection failed: {exc}") from exc
+        except RedisConnectionError:
+            logger.warning(
+                "redis_connection_failed",
+                identity=identity,
+                endpoint=endpoint,
+                fail_open=self.fail_open,
+            )
+            if self.fail_open:
+                return RateLimitResult(
+                    allowed=True,
+                    limit=limit,
+                    remaining=limit,
+                    retry_after=0,
+                    reset_at=int(now + window),
+                )
             raise
+        except Exception as exc:
+            logger.error(
+                "script_execution_failed",
+                identity=identity,
+                endpoint=endpoint,
+                error=str(exc),
+            )
+            raise ScriptExecutionError(f"Lua script failed: {exc}") from exc
 
         allowed = bool(int(result[0]))
         count = int(result[1])
@@ -82,18 +145,29 @@ class RateLimiter:
             retry_after=retry_after,
             reset_at=int(now + window),
         )
-    def check_context(self,
-                      context: RateLimitContext,
-                      policy: RateLimitPolicy
-                      ) -> RateLimitResult:
-        identity_type = IdentityType(policy.identity),
 
-        identity = IdentityResolver.resolve(
-            context, identity_type)
+    def check_context(
+        self,
+        context: RateLimitContext,
+        policy: RateLimitPolicy,
+    ) -> RateLimitResult:
+        """
+        Check rate limit using context and policy objects.
+        
+        Args:
+            context: RateLimitContext with identity and endpoint information
+            policy: RateLimitPolicy with limit and window configuration
+        
+        Returns:
+            RateLimitResult with allowed status and metadata
+        """
+        identity_type = IdentityType(policy.identity)
+
+        identity = IdentityResolver.resolve(context, identity_type)
 
         return self.check(
             identity=identity,
-            endpoint = context.endpoint,
-            limit = policy.limit,
-            window = policy.window
+            endpoint=context.endpoint,
+            limit=policy.limit,
+            window=policy.window,
         )
