@@ -6,6 +6,7 @@ Provides:
 - RateLimitMiddleware for automatic rate limiting
 - Exception handler for 429 responses
 - Identity extraction from Django requests
+- Health check endpoint
 """
 
 from functools import wraps
@@ -15,12 +16,14 @@ import structlog
 from django.http import JsonResponse, HttpRequest
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
+from django.views import View
 
 from rateforge import (
     get_default_limiter,
     RateLimitExceeded,
     RateLimitResponseHandler,
 )
+from rateforge.health import HealthChecker
 
 
 logger = structlog.get_logger()
@@ -278,3 +281,62 @@ def handle_exception(get_response: Callable) -> Callable:
             return rate_limit_exception_handler(exc)
     
     return wrapper
+
+
+class HealthCheckView(View):
+    """
+    Django health check endpoint.
+    
+    Returns JSON response with health status and individual check results.
+    
+    Usage:
+        # urls.py
+        from rateforge.django import HealthCheckView
+        
+        urlpatterns = [
+            path('health', HealthCheckView.as_view(), name='health'),
+            path('healthz', HealthCheckView.as_view(), name='healthz'),
+        ]
+    
+    Response format:
+        {
+            "status": "healthy",
+            "timestamp": 1723456789.123,
+            "checks": {
+                "redis": {"status": "healthy", "latency_ms": 1.4},
+                "database": {"status": "healthy", "details": {...}},
+                ...
+            }
+        }
+    
+    HTTP Status Codes:
+        200: healthy or degraded
+        503: unhealthy
+    """
+    
+    def get(self, request: HttpRequest) -> JsonResponse:
+        """Handle GET request for health check."""
+        checker = HealthChecker()
+        results = checker.run_all_checks()
+        
+        # Determine overall status
+        overall_status = checker.get_overall_status(results)
+        
+        # Set status code based on health
+        status_code = 503 if overall_status == "unhealthy" else 200
+        
+        # Format response
+        response_data = {
+            "status": overall_status,
+            "timestamp": time.time(),
+            "checks": {
+                name: result.to_dict()
+                for name, result in results.items()
+            },
+        }
+        
+        return JsonResponse(response_data, status=status_code)
+
+
+# Import time for timestamp
+import time

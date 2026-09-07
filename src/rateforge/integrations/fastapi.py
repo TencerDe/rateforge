@@ -6,13 +6,15 @@ Provides:
 - rate_limit_dependency for Depends() injection
 - Exception handler for 429 responses
 - Identity extraction from FastAPI requests
+- Health check endpoint
 """
 
+import time
 from functools import wraps
 from typing import Any, Callable, Optional
 
 import structlog
-from fastapi import Request, Depends, HTTPException
+from fastapi import FastAPI, Request, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
 from rateforge import (
@@ -20,6 +22,7 @@ from rateforge import (
     RateLimitExceeded,
     RateLimitResponseHandler,
 )
+from rateforge.health import HealthChecker
 
 
 logger = structlog.get_logger()
@@ -305,3 +308,63 @@ def setup_rate_limiting(app: Any) -> None:
         >>> setup_rate_limiting(app)
     """
     app.add_exception_handler(RateLimitExceeded, rate_limit_exception_handler)
+
+
+def create_health_endpoint(app: FastAPI) -> None:
+    """
+    Add /health and /healthz endpoints to FastAPI app.
+    
+    Args:
+        app: FastAPI application
+    
+    Usage:
+        >>> from fastapi import FastAPI
+        >>> from rateforge.fastapi import create_health_endpoint
+        >>>
+        >>> app = FastAPI()
+        >>> create_health_endpoint(app)
+    
+    Endpoints:
+        GET /health - Health check endpoint
+        GET /healthz - Kubernetes health check (alias)
+    
+    Response format:
+        {
+            "status": "healthy",
+            "timestamp": 1723456789.123,
+            "checks": {
+                "redis": {"status": "healthy", "latency_ms": 1.4},
+                "database": {"status": "healthy", "details": {...}},
+                ...
+            }
+        }
+    
+    HTTP Status Codes:
+        200: healthy or degraded
+        503: unhealthy
+    """
+    checker = HealthChecker()
+    
+    @app.get("/health")
+    @app.get("/healthz")
+    async def health_check():
+        """Health check endpoint for Kubernetes and monitoring."""
+        results = checker.run_all_checks()
+        
+        # Determine overall status
+        overall_status = checker.get_overall_status(results)
+        
+        # Set status code based on health
+        status_code = 503 if overall_status == "unhealthy" else 200
+        
+        return JSONResponse(
+            status_code=status_code,
+            content={
+                "status": overall_status,
+                "timestamp": time.time(),
+                "checks": {
+                    name: result.to_dict()
+                    for name, result in results.items()
+                },
+            },
+        )
