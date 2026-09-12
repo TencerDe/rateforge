@@ -8,6 +8,7 @@ from .rate_limit import (
     configure_limiter,
     rate_limit,
 )
+from .logging_config import setup_logging
 
 __version__ = "0.1.0"
 
@@ -25,4 +26,7 @@ __all__ = [
     
     # Decorator
     "rate_limit",
+    
+    # Logging
+    "setup_logging",
 ]

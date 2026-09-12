@@ -1,11 +1,13 @@
 from dataclasses import dataclass
 from enum import Enum
 
+
 class IdentityType(str, Enum):
     IP = "ip"
     USER = "user"
     API_KEY = "api_key"
     PLAN = "plan"
+
 
 @dataclass(frozen=True)
 class RateLimitResult:

@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  # Redis - RateForge's data store
+  redis:
+    image: redis:7-alpine
+    container_name: rateforge-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rateforge-network
+    restart: unless-stopped
+
+  # RateForge - Run tests by default
+  rateforge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: rateforge-app
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - RATEFORGE_REDIS_URL=redis://redis:6379/0
+      - RATEFORGE_FAIL_OPEN=true
+      - RATEFORGE_LOG_FORMAT=console
+    volumes:
+      # Mount source code for development
+      - ./src:/app/src:ro
+      - ./tests:/app/tests:ro
+      # Mount test results
+      - ./test-results:/app/test-results
+    command: >
+      python -m pytest tests/ 
+      -v 
+      --cov=rateforge 
+      --cov-report=xml 
+      --cov-report=html 
+      --cov-report=term-missing 
+      --junitxml=test-results/junit.xml
+    networks:
+      - rateforge-network
+    restart: unless-stopped
+
+  # RateForge Demo - FastAPI example app (optional)
+  rateforge-demo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: rateforge-demo
+    depends_on:
+      redis:
+        condition: service_healthy
+      rateforge:
+        condition: service_completed_successfully
+    environment:
+      - RATEFORGE_REDIS_URL=redis://redis:6379/0
+      - RATEFORGE_FAIL_OPEN=true
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./examples:/app/examples:ro
+    command: >
+      python -m uvicorn examples.demo_fastapi:app
+      --host 0.0.0.0
+      --port 8000
+    networks:
+      - rateforge-network
+    restart: unless-stopped
+    profiles:
+      - demo
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  rateforge-network:
+    driver: bridge

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 
-
 _UNITS = {
     "second": 1,
     "seconds": 1,
@@ -42,8 +41,7 @@ def parse_rate(rate: str) -> tuple[int, int]:
 
     if not match:
         raise ValueError(
-            f"Invalid rate format: {rate!r}. "
-            "Expected '<number>/<unit>', e.g. '100/minute'."
+            f"Invalid rate format: {rate!r}. Expected '<number>/<unit>', e.g. '100/minute'."
         )
 
     limit = int(match.group(1))
@@ -55,8 +53,6 @@ def parse_rate(rate: str) -> tuple[int, int]:
     try:
         window = _UNITS[unit]
     except KeyError:
-        raise ValueError(
-            f"Unsupported rate unit: {unit!r}"
-        ) from None
+        raise ValueError(f"Unsupported rate unit: {unit!r}") from None
 
     return limit, window

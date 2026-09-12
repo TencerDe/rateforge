@@ -14,5 +14,5 @@ class PlanRegistry:
     def get(self, plan: str) -> PlanLimit:
         try:
             return self.plans[plan]
-        except KeyError:
-            raise ValueError(f"Unknown plan: {plan}")
+        except KeyError as exc:
+            raise ValueError(f"Unknown plan: {plan}") from exc

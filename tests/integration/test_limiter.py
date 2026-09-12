@@ -2,9 +2,7 @@ from rateforge import RateLimiter
 
 
 def test_rate_limit():
-    limiter = RateLimiter(
-        "redis://localhost:6379/0"
-    )
+    limiter = RateLimiter("redis://localhost:6379/0")
 
     identity = "test-user-123"
 

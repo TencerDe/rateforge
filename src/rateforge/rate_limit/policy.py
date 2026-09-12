@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+
 from .duration import parse_rate
 
 

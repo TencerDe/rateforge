@@ -1,19 +1,19 @@
 from redis import Redis
-from redis.exceptions import ConnectionError, TimeoutError, BusyLoadingError
+from redis.exceptions import BusyLoadingError, ConnectionError, TimeoutError
 
-from .exceptions import RedisConnectionError, ConfigurationError
+from .exceptions import ConfigurationError, RedisConnectionError
 
 
 class RedisBackend:
     """
     Redis backend wrapper with specific exception handling.
-    
+
     Distinguishes between:
     - Connection/timeout errors (infrastructure issues)
     - Configuration errors (invalid URL, auth failures)
     - Other Redis errors (bugs, script errors)
     """
-    
+
     def __init__(self, redis_url: str):
         try:
             self.redis = Redis.from_url(
