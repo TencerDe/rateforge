@@ -5,9 +5,1138 @@ Summary: Redis-backed sliding window rate limiter for Python applications
 Author: Tanuj Sharma
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown
+License-File: LICENSE
 Requires-Dist: redis>=5.0
 Requires-Dist: structlog>=24.0
 Provides-Extra: dev
 Requires-Dist: pytest>=8.0; extra == "dev"
 Requires-Dist: pytest-cov>=5.0; extra == "dev"
 Requires-Dist: pytest-mock>=3.0; extra == "dev"
+Dynamic: license-file
+
+# RateForge
+
+**Production-ready Redis-backed sliding-window rate limiter for Python APIs.**
+
+> Django + FastAPI • Redis • Lua • Sliding Window • Health Checks • Docker-ready
+
+[![PyPI version](https://badge.fury.io/py/rateforge.svg)](https://badge.fury.io/py/rateforge)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Code style: Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+
+---
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [What is RateForge?](#what-is-rateforge)
+- [Features](#features)
+- [Installation](#installation)
+- [Usage Examples](#usage-examples)
+- [Configuration](#configuration)
+- [Identity Types](#identity-types)
+- [Advanced Features](#advanced-features)
+- [Customization Guide](#customization-guide)
+- [API Reference](#api-reference)
+- [Docker](#docker)
+- [Health Checks](#health-checks)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
+## Quick Start
+
+Get rate limiting working in 5 minutes:
+
+### 1. Install
+
+```bash
+pip install rateforge
+```
+
+### 2. Set Environment Variable
+
+```bash
+export RATEFORGE_REDIS_URL="redis://localhost:6379/0"
+```
+
+### 3. Use in Django
+
+```python
+# views.py
+from rateforge.django import rate_limit
+
+@rate_limit("100/minute")
+def my_view(request):
+    return HttpResponse("Hello!")
+```
+
+### 4. Use in FastAPI
+
+```python
+# main.py
+from rateforge.fastapi import rate_limit
+
+@app.get("/users")
+@rate_limit("100/minute")
+async def get_users():
+    return {"users": [...]}
+```
+
+**That's it!** You now have production-ready rate limiting with:
+-  Redis-backed sliding window
+-  Automatic 429 responses
+-  Rate limit headers
+-  Fail-open/fail-closed modes
+-  Health checks
+
+---
+
+## What is RateForge?
+
+RateForge solves a critical problem: **protecting your API from abuse while staying available**.
+
+### The Problem
+
+Without rate limiting:
+- Malicious users can overwhelm your API
+- One client can consume all resources
+- Legitimate users get slow responses
+- Your server can crash under load
+
+### The Solution
+
+RateForge provides:
+- **Per-client limits** (IP, user, API key)
+- **Sliding window algorithm** (smooth, accurate limiting)
+- **Redis backend** (distributed, scalable)
+- **Graceful failures** (stay available when Redis is down)
+- **Framework integration** (Django + FastAPI)
+
+### When to Use RateForge
+
+ **Good fit:**
+- Public APIs needing protection
+- Multi-tenant SaaS applications
+- APIs with different rate limits per user tier
+- Distributed systems (multiple instances)
+- High-traffic applications
+
+ **Not needed:**
+- Internal tools with trusted users
+- Single-instance apps with low traffic
+- When you need complex rate limiting rules (use Kong/Apigee instead)
+
+---
+
+## Features
+
+### Core Features
+
+-  **Redis-backed sliding window** - Accurate, distributed rate limiting
+-  **Multiple identity types** - IP, user, API key, custom
+-  **Human-readable rates** - `"100/minute"`, `"1000/hour"`, `"5/second"`
+-  **Atomic Lua scripts** - No race conditions
+-  **Fail-open/fail-closed** - Configurable Redis failure behavior
+-  **Automatic headers** - `X-RateLimit-*`, `Retry-After`
+
+### Framework Integration
+
+-  **Django** - Decorator + Middleware
+-  **FastAPI** - Decorator + `Depends()` injection
+-  **Standalone** - Use core `RateLimiter` directly
+
+### Production Ready
+
+-  **Health checks** - 5 checks (Redis, memory, filesystem, config, database)
+-  **Docker** - Multi-stage build, optimized image
+-  **Kubernetes** - Liveness/readiness probes
+-  **Structured logging** - JSON or console format
+-  **85%+ test coverage** - Comprehensive test suite
+-  **CI/CD** - GitHub Actions pipeline
+
+### Developer Experience
+
+-  **Type hints** - Full type annotations
+-  **Well documented** - Comprehensive README + API docs
+-  **Easy to customize** - Extendable architecture
+-  **Zero config** - Works out of the box
+
+---
+
+## Installation
+
+### Basic Installation
+
+```bash
+pip install rateforge
+```
+
+### Development Installation
+
+```bash
+pip install -e ".[dev]"
+```
+
+### Requirements
+
+- **Python:** 3.11+
+- **Redis:** 5.0+
+- **Optional:** Django 4.2+, FastAPI 0.100+
+
+---
+
+## Usage Examples
+
+### Django
+
+#### Decorator Approach
+
+```python
+# views.py
+from django.http import JsonResponse
+from rateforge.django import rate_limit
+
+# IP-based limiting (default)
+@rate_limit("100/minute")
+def home(request):
+    return JsonResponse({"message": "Hello!"})
+
+# User-based limiting
+@login_required
+@rate_limit("10/minute", identity="user")
+def create_order(request):
+    # Each user can make 10 requests per minute
+    ...
+
+# Bypass for authenticated users
+@rate_limit("50/hour", bypass_if_authenticated=True)
+def public_api(request):
+    # Anonymous: 50/hour
+    # Authenticated: unlimited
+    ...
+```
+
+#### Middleware Approach
+
+```python
+# settings.py
+MIDDLEWARE = [
+    ...
+    "rateforge.django.RateLimitMiddleware",
+]
+
+# Optional configuration
+RATEFORGE_CONFIG = {
+    "default_rate": "100/minute",
+    "identity": "ip",  # IP-based by default
+}
+```
+
+### FastAPI
+
+#### Decorator Approach
+
+```python
+# main.py
+from fastapi import FastAPI
+from rateforge.fastapi import rate_limit
+
+app = FastAPI()
+
+@app.get("/users")
+@rate_limit("100/minute")
+async def get_users():
+    return {"users": [...]}
+
+@app.post("/orders")
+@rate_limit("10/minute", identity="user")
+async def create_order():
+    return {"order_id": 123}
+```
+
+#### Dependency Injection Approach
+
+```python
+from fastapi import FastAPI, Depends
+from rateforge.fastapi import rate_limit_dependency
+
+app = FastAPI()
+
+# Per-endpoint rate limit
+@app.get("/premium", dependencies=[Depends(rate_limit_dependency("1000/hour"))])
+async def premium_endpoint():
+    return {"tier": "premium"}
+
+# Global rate limit for all routes
+app.add_dependency(rate_limit_dependency("100/minute"))
+```
+
+### Standalone Usage
+
+```python
+from rateforge import RateLimiter
+
+limiter = RateLimiter("redis://localhost:6379/0")
+
+result = limiter.check(
+    identity="user:123",
+    endpoint="/api/orders",
+    limit=100,
+    window=60,
+)
+
+if result.allowed:
+    print(f"Allowed! Remaining: {result.remaining}")
+else:
+    print(f"Blocked! Retry after {result.retry_after} seconds")
+```
+
+---
+
+## Configuration
+
+### Environment Variables
+
+```bash
+# Required
+export RATEFORGE_REDIS_URL="redis://localhost:6379/0"
+
+# Optional
+export RATEFORGE_FAIL_OPEN="true"          # true/false
+export RATEFORGE_LOG_FORMAT="auto"         # json/console/auto
+export RATEFORGE_LOG_LEVEL="INFO"          # DEBUG/INFO/WARNING/ERROR
+```
+
+### Configuration Options
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RATEFORGE_REDIS_URL` | `redis://localhost:6379/0` | Redis connection URL |
+| `RATEFORGE_FAIL_OPEN` | `true` | Allow requests when Redis is down |
+| `RATEFORGE_LOG_FORMAT` | `auto` | Log format (auto-detects environment) |
+| `RATEFORGE_LOG_LEVEL` | `INFO` | Logging level |
+
+### Programmatic Configuration
+
+```python
+from rateforge import configure_limiter
+
+configure_limiter(
+    "redis://my-redis:6379/0",
+    fail_open=False,  # Strict mode
+)
+```
+
+---
+
+## Identity Types
+
+RateForge supports multiple ways to identify clients:
+
+### 1. IP-Based (Default)
+
+```python
+@rate_limit("100/minute")
+def my_view(request):
+    # Limits by client IP address
+    ...
+```
+
+**Extracts IP from:**
+- `X-Forwarded-For` header (if present)
+- `REMOTE_ADDR` (Django) or `request.client` (FastAPI)
+
+**Best for:** Public APIs, anonymous users
+
+### 2. User-Based
+
+```python
+@login_required
+@rate_limit("10/minute", identity="user")
+def user_action(request):
+    # Limits by authenticated user ID
+    ...
+```
+
+**Requirements:**
+- User must be authenticated
+- User object must have `id` or `pk` attribute
+
+**Best for:** Authenticated endpoints, user-specific actions
+
+### 3. API Key-Based
+
+```python
+@rate_limit("1000/hour", identity="api_key")
+def api_endpoint(request):
+    # Limits by X-API-Key header
+    ...
+```
+
+**Requirements:**
+- Client must send `X-API-Key` header
+
+**Best for:** External APIs, third-party integrations
+
+### 4. Custom Identity Extractor
+
+```python
+# Extract by organization ID
+@rate_limit(
+    "1000/hour",
+    identity=lambda request: f"org:{request.organization.id}",
+)
+def org_endpoint(request):
+    ...
+
+# Extract by custom header
+@rate_limit(
+    "100/minute",
+    identity=lambda request: f"device:{request.headers.get('X-Device-ID')}",
+)
+def device_endpoint(request):
+    ...
+```
+
+**Best for:** Custom business logic, multi-tenant apps
+
+---
+
+## Advanced Features
+
+### Fail-Open / Fail-Closed Modes
+
+Control behavior when Redis is unavailable:
+
+```python
+# Fail-open (default) - Stay available, skip rate limiting
+limiter = RateLimiter("redis://...", fail_open=True)
+
+# Fail-closed - Reject requests when Redis is down
+limiter = RateLimiter("redis://...", fail_open=False)
+```
+
+**When to use which:**
+
+| Mode | Use Case | Example |
+|------|----------|---------|
+| **Fail-Open** | Availability > strict limiting | Public content APIs |
+| **Fail-Closed** | Security > availability | Payment APIs, auth endpoints |
+
+### Bypass for Authenticated Users
+
+```python
+@rate_limit("50/hour", bypass_if_authenticated=True)
+def public_action(request):
+    # Anonymous users: 50/hour
+    # Authenticated users: unlimited
+    ...
+```
+
+**Use case:** Freemium APIs, reduce friction for logged-in users
+
+### Custom Rate Limits Per Endpoint
+
+```python
+# Expensive operation
+@rate_limit("5/minute")
+def generate_report(request):
+    ...
+
+# Cheap operation
+@rate_limit("1000/minute")
+def get_status(request):
+    ...
+```
+
+### Multiple Rate Limits (Stacking)
+
+```python
+# Both limits apply
+@rate_limit("100/minute")
+@rate_limit("1000/hour")
+def my_endpoint(request):
+    # Must satisfy both: 100/min AND 1000/hour
+    ...
+```
+
+---
+
+## Customization Guide
+
+RateForge is designed to be easily customized. Here's how:
+
+### 1. Modify Rate Limits
+
+Change rates per endpoint:
+
+```python
+# Default: 100/minute
+@rate_limit("100/minute")
+def standard_endpoint(request):
+    ...
+
+# Custom: 1000/hour for premium
+@rate_limit("1000/hour")
+def premium_endpoint(request):
+    ...
+
+# Custom: 5/second for real-time
+@rate_limit("5/second")
+def realtime_endpoint(request):
+    ...
+```
+
+**Supported units:**
+- `second` or `s`
+- `minute` or `min`
+- `hour` or `hour`
+- `day` or `day`
+
+### 2. Add Custom Identity Extractors
+
+Create custom identity logic:
+
+```python
+def extract_org_id(request):
+    """Extract organization ID from request."""
+    if hasattr(request, "organization"):
+        return f"org:{request.organization.id}"
+    raise ValueError("Organization not found")
+
+@rate_limit("1000/hour", identity=extract_org_id)
+def org_endpoint(request):
+    ...
+```
+
+**Advanced: Multi-factor identity**
+
+```python
+def extract_complex_identity(request):
+    """Combine user + IP for stricter limiting."""
+    if request.user.is_authenticated:
+        return f"user:{request.user.id}"
+    else:
+        return f"ip:{request.META.get('REMOTE_ADDR')}"
+
+@rate_limit("100/minute", identity=extract_complex_identity)
+def hybrid_endpoint(request):
+    ...
+```
+
+### 3. Change 429 Response Format
+
+Override default 429 response:
+
+#### Django
+
+```python
+# views.py
+from django.http import JsonResponse
+from rateforge import RateLimitExceeded
+
+def custom_429_handler(request, exc):
+    return JsonResponse(
+        {
+            "error": "rate_limit_exceeded",
+            "message": "Too many requests. Please slow down.",
+            "retry_after_seconds": exc.retry_after,
+            "custom_field": "custom_value",  # Add custom fields
+        },
+        status=429,
+    )
+
+# Register handler
+handler_429 = custom_429_handler
+```
+
+#### FastAPI
+
+```python
+# main.py
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from rateforge import RateLimitExceeded
+
+@app.exception_handler(RateLimitExceeded)
+async def custom_429_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={
+            "error": "rate_limit_exceeded",
+            "message": "Slow down!",
+            "retry_in": exc.retry_after,
+            "documentation_url": "https://docs.example.com/rate-limiting",
+        },
+    )
+```
+
+### 4. Add Custom Headers
+
+Add custom rate limit headers:
+
+```python
+from rateforge import RateLimitExceeded
+from django.http import JsonResponse
+
+def custom_429_with_headers(request, exc):
+    response = JsonResponse({
+        "error": "rate_limit_exceeded",
+        "retry_after": exc.retry_after,
+    })
+    response.status_code = 429
+    
+    # Add custom headers
+    response["X-Custom-Rate-Limit"] = "custom_value"
+    response["X-Retry-After-Human"] = f"{exc.retry_after} seconds"
+    
+    return response
+```
+
+### 5. Create Custom Health Checks
+
+Add custom health checks:
+
+```python
+from rateforge.health import HealthChecker, HealthCheckResult
+
+class CustomHealthChecker(HealthChecker):
+    def check_custom_service(self) -> HealthCheckResult:
+        """Check your custom service."""
+        try:
+            # Your custom check logic
+            is_healthy = check_your_service()
+            
+            if is_healthy:
+                return HealthCheckResult(
+                    name="custom_service",
+                    status="healthy",
+                )
+            else:
+                return HealthCheckResult(
+                    name="custom_service",
+                    status="unhealthy",
+                    error="Service check failed",
+                )
+        
+        except Exception as exc:
+            return HealthCheckResult(
+                name="custom_service",
+                status="unhealthy",
+                error=str(exc),
+            )
+
+# Use custom checker
+checker = CustomHealthChecker()
+results = checker.run_all_checks()  # Includes your custom check
+```
+
+### 6. Modify Logging Format
+
+Customize logging:
+
+```python
+from rateforge import setup_logging
+
+# Use JSON format (for Datadog/Splunk)
+setup_logging(log_format="json")
+
+# Use console format (for development)
+setup_logging(log_format="console")
+
+# Auto-detect (default - JSON in Docker/K8s, console otherwise)
+setup_logging(log_format="auto")
+
+# Custom log level
+setup_logging(log_level="DEBUG")
+```
+
+### 7. Extend with Custom Middleware (Django)
+
+Create custom middleware:
+
+```python
+# middleware.py
+from rateforge.django import RateLimitMiddleware
+
+class CustomRateLimitMiddleware(RateLimitMiddleware):
+    def __call__(self, request):
+        # Add custom logic before rate limiting
+        if request.path.startswith("/admin/"):
+            # Skip rate limiting for admin
+            return self.get_response(request)
+        
+        # Custom logging
+        print(f"Rate limiting: {request.path}")
+        
+        # Call parent implementation
+        return super().__call__(request)
+```
+
+### 8. Create Custom Decorators
+
+Build your own decorators:
+
+```python
+from rateforge.django import rate_limit as base_rate_limit
+
+def premium_rate_limit(rate: str = "1000/hour"):
+    """Custom decorator for premium endpoints."""
+    return base_rate_limit(
+        rate=rate,
+        identity="user",
+        bypass_if_authenticated=True,
+    )
+
+# Use your custom decorator
+@premium_rate_limit("2000/hour")
+def premium_endpoint(request):
+    ...
+```
+
+---
+
+## API Reference
+
+### Core API
+
+#### `RateLimiter`
+
+```python
+from rateforge import RateLimiter
+
+limiter = RateLimiter(
+    redis_url="redis://localhost:6379/0",
+    fail_open=True,
+)
+
+result = limiter.check(
+    identity="user:123",
+    endpoint="/api/test",
+    limit=100,
+    window=60,
+)
+```
+
+**Parameters:**
+- `redis_url` (str): Redis connection URL
+- `fail_open` (bool): Allow requests when Redis is down (default: `True`)
+
+**Methods:**
+- `check(identity, endpoint, limit, window)` → `RateLimitResult`
+- `check_context(context, policy)` → `RateLimitResult`
+
+#### `RateLimitResult`
+
+```python
+@dataclass
+class RateLimitResult:
+    allowed: bool          # True if request allowed
+    limit: int             # Rate limit
+    remaining: int         # Remaining requests
+    retry_after: int       # Seconds until retry
+    reset_at: int          # Unix timestamp when window resets
+```
+
+### Django Integration
+
+#### `rate_limit` Decorator
+
+```python
+from rateforge.django import rate_limit
+
+@rate_limit(
+    rate="100/minute",
+    identity="ip",  # or "user", "api_key", or callable
+    bypass_if_authenticated=False,
+)
+def my_view(request):
+    ...
+```
+
+**Parameters:**
+- `rate` (str): Human-readable rate (e.g., `"100/minute"`)
+- `identity` (str | callable): Identity type or extractor function
+- `bypass_if_authenticated` (bool): Skip for authenticated users
+
+#### `RateLimitMiddleware`
+
+```python
+# settings.py
+MIDDLEWARE = [
+    ...
+    "rateforge.django.RateLimitMiddleware",
+]
+```
+
+Automatically applies rate limiting to all requests.
+
+### FastAPI Integration
+
+#### `rate_limit` Decorator
+
+```python
+from rateforge.fastapi import rate_limit
+
+@app.get("/users")
+@rate_limit("100/minute")
+async def get_users():
+    ...
+```
+
+#### `rate_limit_dependency`
+
+```python
+from fastapi import Depends
+from rateforge.fastapi import rate_limit_dependency
+
+@app.get(
+    "/premium",
+    dependencies=[Depends(rate_limit_dependency("1000/hour"))]
+)
+async def premium_endpoint():
+    ...
+```
+
+### Health Checks
+
+#### `HealthChecker`
+
+```python
+from rateforge.health import HealthChecker
+
+checker = HealthChecker()
+results = checker.run_all_checks()
+
+# Access individual checks
+redis_result = results["redis"]
+print(f"Redis status: {redis_result.status}")
+print(f"Redis latency: {redis_result.latency_ms}ms")
+```
+
+**Checks:**
+- `redis` - Redis connectivity and latency
+- `database` - Placeholder for future database checks
+- `filesystem` - Filesystem write permissions
+- `memory` - Memory usage (requires `psutil`)
+- `config` - Configuration validation
+
+**Status values:**
+- `"healthy"` - All checks passing
+- `"degraded"` - Non-critical issues
+- `"unhealthy"` - Critical failure
+
+---
+
+## Docker
+
+### Quick Start
+
+```bash
+# Run tests in Docker
+docker-compose up --build
+
+# Run demo API
+docker-compose --profile demo up
+
+# Access: http://localhost:8000
+```
+
+### Development Mode
+
+```bash
+# Start with code sync
+docker-compose up rateforge
+
+# Run tests in container
+docker-compose exec rateforge pytest tests/ -v
+
+# View logs
+docker-compose logs -f rateforge
+```
+
+### Production Mode
+
+```dockerfile
+# Dockerfile
+FROM rateforge:latest
+
+ENV RATEFORGE_REDIS_URL=redis://redis:6379/0
+ENV RATEFORGE_FAIL_OPEN=true
+
+CMD ["python", "-m", "uvicorn", "myapp:app", "--host", "0.0.0.0"]
+```
+
+### Docker Compose Example
+
+```yaml
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+  
+  app:
+    build: .
+    environment:
+      - RATEFORGE_REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+    ports:
+      - "8000:8000"
+```
+
+See `docker-compose.yml` for complete example.
+
+---
+
+## Health Checks
+
+### Endpoints
+
+RateForge provides two health check endpoints:
+
+- `/health` - Standard health check
+- `/healthz` - Kubernetes health check
+
+### Response Format
+
+```json
+{
+  "status": "healthy",
+  "timestamp": 1723456789.123,
+  "checks": {
+    "redis": {
+      "status": "healthy",
+      "latency_ms": 1.4,
+      "details": {"message": "Redis connection successful"}
+    },
+    "database": {
+      "status": "healthy",
+      "details": {"note": "Database not configured"}
+    },
+    "filesystem": {
+      "status": "healthy"
+    },
+    "memory": {
+      "status": "healthy",
+      "details": {"usage_percent": 45.2}
+    },
+    "config": {
+      "status": "healthy",
+      "details": {"redis_url_configured": true}
+    }
+  }
+}
+```
+
+### HTTP Status Codes
+
+| Overall Status | HTTP Code | Meaning |
+|----------------|-----------|---------|
+| `healthy` | 200 | All checks passing |
+| `degraded` | 200 | Non-critical issues |
+| `unhealthy` | 503 | Critical failure |
+
+### Kubernetes Probes
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  failureThreshold: 3
+```
+
+---
+
+## Troubleshooting
+
+### Common Errors
+
+#### "Redis connection failed"
+
+**Problem:** Cannot connect to Redis
+
+**Solutions:**
+1. Check Redis is running: `redis-cli ping`
+2. Verify `RATEFORGE_REDIS_URL` environment variable
+3. Check network connectivity: `telnet redis-host 6379`
+4. Check Redis logs for errors
+
+#### "User not authenticated"
+
+**Problem:** Using `identity="user"` but user is not authenticated
+
+**Solutions:**
+1. Add `@login_required` decorator (Django)
+2. Ensure authentication middleware is configured (FastAPI)
+3. Verify user object has `is_authenticated` property
+
+#### "API key not provided"
+
+**Problem:** Using `identity="api_key"` but header missing
+
+**Solutions:**
+1. Client must send `X-API-Key` header
+2. Check header name is correct (case-sensitive)
+3. Consider fallback to IP-based limiting
+
+#### Rate limiting not working
+
+**Problem:** Requests not being rate limited
+
+**Solutions:**
+1. Verify decorator is applied correctly
+2. Check Redis connection (see first error)
+3. Enable logging: `setup_logging(log_level="DEBUG")`
+4. Check rate limit headers in response
+
+### Debug Mode
+
+Enable debug logging:
+
+```python
+from rateforge import setup_logging
+
+setup_logging(log_level="DEBUG", log_format="console")
+```
+
+### Testing Locally
+
+```bash
+# Start Redis
+docker run --name rateforge-redis -p 6379:6379 -d redis:7
+
+# Verify connection
+python -c "from redis import Redis; print(Redis.from_url('redis://localhost:6379').ping())"
+# Expected: True
+
+# Run tests
+pytest tests/unit/ -v
+```
+
+---
+
+## Contributing
+
+### Development Setup
+
+```bash
+# Clone repository
+git clone https://github.com/yourusername/rateforge.git
+cd rateforge
+
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # Linux/Mac
+.venv\Scripts\activate     # Windows
+
+# Install dependencies
+pip install -e ".[dev]"
+
+# Start Redis
+docker run --name rateforge-redis -p 6379:6379 -d redis:7
+
+# Run tests
+pytest tests/ -v
+
+# Run linting
+ruff check src/ tests/
+mypy src/
+```
+
+### Running Tests
+
+```bash
+# All tests
+pytest tests/ -v
+
+# Unit tests only
+pytest tests/unit/ -v
+
+# Integration tests (requires Redis)
+pytest tests/integration/ -v
+
+# With coverage
+pytest --cov=rateforge tests/
+```
+
+### Submitting PRs
+
+1. Fork the repository
+2. Create feature branch: `git checkout -b feature/my-feature`
+3. Make changes
+4. Run tests: `pytest tests/ -v`
+5. Run linting: `ruff check src/ tests/`
+6. Commit: `git commit -m "Add my feature"`
+7. Push: `git push origin feature/my-feature`
+8. Open Pull Request
+
+### Code Style
+
+- **Formatter:** Ruff (`ruff format`)
+- **Linter:** Ruff (`ruff check`)
+- **Type Checker:** MyPy (`mypy src/`)
+- **Test Framework:** pytest
+
+---
+
+## License
+
+**MIT License**
+
+Copyright (c) 2026 Tanuj Sharma
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+## Support
+
+- **Documentation:** This README
+- **Issues:** [GitHub Issues](https://github.com/yourusername/rateforge/issues)
+- **Email:** your.email@example.com
+
+---
+
+## Acknowledgments
+
+- Redis team for the amazing database
+- Django and FastAPI teams for excellent frameworks
+- Python community for support
+
+---
+
+**Developed by Tanuj Sharma aka TencerDe**
