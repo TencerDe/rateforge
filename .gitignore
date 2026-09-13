@@ -1,3 +1,4 @@
 RELEASE_SUMMARY.md
 CHANGELOG.md
 .venv
+.env

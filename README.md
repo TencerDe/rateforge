@@ -1110,8 +1110,8 @@ SOFTWARE.
 ## Support
 
 - **Documentation:** This README
-- **Issues:** [GitHub Issues](https://github.com/yourusername/rateforge/issues)
-- **Email:** your.email@example.com
+- **Issues:** [GitHub Issues](https://github.com/tencerde/rateforge/issues)
+- **Email:** tsharma2907@gmail.com
 
 ---
 
